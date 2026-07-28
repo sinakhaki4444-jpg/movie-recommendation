@@ -4,3 +4,4 @@ node2vec
 gensim
 rapidfuzz
 streamlit
+gensim==4.3.2
