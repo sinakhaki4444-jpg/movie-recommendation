@@ -1,6 +1,6 @@
 pandas
 networkx
-node2vec
+node2vec==0.4.3
 gensim
 rapidfuzz
 streamlit
