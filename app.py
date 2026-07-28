@@ -1,68 +1,87 @@
 from io import BytesIO
 from urllib.request import urlopen
 from zipfile import ZipFile
+import streamlit as st
+import os
+@st.cache_data
+def download_data():
+    if not os.path.exists("ml-100k"):
+        url = 'https://files.grouplens.org/datasets/movielens/ml-100k.zip'
 
-url = 'https://files.grouplens.org/datasets/movielens/ml-100k.zip'
+        with urlopen(url) as zurl:
+            with ZipFile(BytesIO(zurl.read())) as zfile:
+                zfile.extractall('.')
 
-with urlopen(url) as zurl:
-    with ZipFile(BytesIO(zurl.read())) as zfile:
-        zfile.extractall('.')
+    return True
 
+download_data()
 import pandas as pd
 
-ratings = pd.read_csv(
-    'ml-100k/u.data',
-    sep='\t',
-    names=['user_id', 'movie_id', 'rating', 'unix_timestamp']
-)
+
+@st.cache_data
+def load_data():
+
+    ratings = pd.read_csv(
+        'ml-100k/u.data',
+        sep='\t',
+        names=['user_id', 'movie_id', 'rating', 'unix_timestamp']
+    )
+
+    movies = pd.read_csv(
+        'ml-100k/u.item',
+        sep='|',
+        usecols=range(2),
+        names=['movie_id', 'title'],
+        encoding='latin-1'
+    )
+
+    return ratings, movies
 
 
-movies = pd.read_csv(
-    'ml-100k/u.item',
-    sep='|',
-    usecols=range(2),
-    names=['movie_id', 'title'],
-    encoding='latin-1'
-)
-
+ratings, movies = load_data()
 
 ratings = ratings[ratings.rating >= 4]
 
+top_movies = (
+    ratings.groupby("movie_id")
+    .size()
+    .sort_values(ascending=False)
+    .head(10)
+    .reset_index()
+)
+
+top_movies = top_movies.merge(
+    movies,
+    on="movie_id"
+)
 
 
-from collections import defaultdict
+st.subheader("🎬 Top 10 Movies")
 
-pairs = defaultdict(int)
+st.dataframe(
+    top_movies[["title"]],
+    use_container_width=True,
+    hide_index=True
+)
 
-for group in ratings.groupby("user_id"):
-    user_movies = list(group[1]["movie_id"])
 
-    for i in range(len(user_movies)):
-        for j in range(i + 1, len(user_movies)):
-            pairs[(user_movies[i], user_movies[j])] += 1
 
-import networkx as nx
-
-G = nx.Graph()
-
-for pair in pairs:
-    movie1, movie2 = pair
-    score = pairs[pair]
-
-    if score >= 20:
-        G.add_edge(movie1, movie2, weight=score)
-
-from gensim.models import Word2Vec
-
-model = Word2Vec.load("movie_model.model")
 
 
 def recommend(movie):
     movie_id = str(movies[movies.title == movie].movie_id.values[0])
 
-    for id in model.wv.most_similar(movie_id)[:5]:
-        title = movies[movies.movie_id == int(id[0])].title.values[0]
-        print(f'{title}: {id[1]:.2f}')
+    results = []
+
+    for id, score in model.wv.most_similar(movie_id)[:5]:
+        title = movies[movies.movie_id == int(id)].title.values[0]
+
+        results.append({
+            "Movie": title,
+            "Similarity": round(score, 2)
+        })
+
+    return pd.DataFrame(results)
 
 movie_titles = movies['title'].tolist()
 
@@ -79,12 +98,22 @@ def search_movies(text):
     return [r[0] for r in results]
 
 
-import streamlit as st
+
+from gensim.models import Word2Vec
 import base64
 
-def set_background(image_file):
+@st.cache_data
+def load_background(image_file):
     with open(image_file, "rb") as f:
-        data = base64.b64encode(f.read()).decode()
+        return base64.b64encode(f.read()).decode()
+@st.cache_resource
+def load_model():
+    return Word2Vec.load("movie_model.model")
+
+model = load_model()
+
+def set_background(image_file):
+    data = load_background(image_file)
 
     st.markdown(
         f"""
@@ -99,18 +128,21 @@ def set_background(image_file):
         """,
         unsafe_allow_html=True
     )
-import os
+
 
 
 set_background("background.png.jpeg")
 
-st.title("Movie Recommendation System")
+st.title("Movie Recommendation System My Mahsa")
 
+st.markdown("""
+You’re my soul mate Mahsa.
+I can’t just handle that, and I think we made for each other.
+ You are my everything. Just hold me and I believe in us.
+ I know we belong together, I love you so much.
+""")
 
-query = st.text_input(
-    "Search movie:"
-)
-
+query = st.text_input("Search movie:")
 
 if query:
 
@@ -121,9 +153,15 @@ if query:
         results
     )
 
-
     if st.button("Recommend"):
 
-        recommend(selected)
+        similar_movies = recommend(selected)
 
+        st.subheader("🔥 Similar Movies")
+
+        st.dataframe(
+            similar_movies,
+            use_container_width=True,
+            hide_index=True
+        )
 
